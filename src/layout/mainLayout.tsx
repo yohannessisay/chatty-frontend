@@ -5,6 +5,9 @@ import { useEffect, useState } from "react";
 import Dashboard from "../pages/dashboard";
 import Chats from "../pages/chats";
 import { Route, Routes } from "react-router-dom";
+import RegisterScreen from "@/pages/auth/register";
+import LoginScreen from "@/pages/auth/login";
+import { ProtectedRoute } from "@/context/protectedRoutes";
 export default function Layout() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
 
@@ -25,18 +28,22 @@ export default function Layout() {
     <SidebarProvider defaultOpen={isSidebarOpen}>
       <AppSidebar />
 
-      <main className="flex flex-col bg-gray-100 dark:bg-gray-900 w-full">
+      <main className="flex flex-col bg-gray-100 dark:bg-gray-950 w-full">
         <div className="flex justify-between rounded-md shadow-md m-4 bg-white/30 dark:bg-black backdrop-blur-md border border-white/20">
           <SidebarTrigger />
           <ModeToggle />
         </div>
 
-       <div className="mx-4">
-       <Routes>
-          <Route path="/" element={<Dashboard />} />
-          <Route path="/chats" element={<Chats />} />
-        </Routes>
-       </div>
+        <div className="mx-4">
+          <Routes>
+            <Route path="/" element={<Dashboard />} />
+            <Route path="/login" element={<LoginScreen />} />
+            <Route path="/register" element={<RegisterScreen />} />
+            <Route element={<ProtectedRoute />}>
+              <Route path="/chats" element={<Chats />} />
+            </Route>
+          </Routes>
+        </div>
       </main>
     </SidebarProvider>
   );

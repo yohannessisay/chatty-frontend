@@ -1,56 +1,97 @@
 import { useEffect, useState } from "react";
-import { PenBox, Search } from "lucide-react";
 
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { MagnifyingGlassIcon, Pencil1Icon } from "@radix-ui/react-icons";
+import { getData } from "@/services/apiService";
+import { jwtDecode } from "jwt-decode";
+import { UserData } from "./chats";
+import { useSocket } from "@/services/contexts";
 
 interface ChatItem {
   id: string;
-  name: string;
-  avatar: string;
-  lastMessage: string;
-  time: string;
+  firstName: string;
+  lastName: string;
+  lastMessage?: string;
+  time?: string;
 }
 
-const initialChats: ChatItem[] = [
-  {
-    id: "1",
-    name: "Alice Johnson",
-    avatar: "/placeholder.svg?height=40&width=40",
-    lastMessage: "Hey, how's it going?",
-    time: "2m ago",
-  }
-];
-
 export default function ChatList() {
+  const token = localStorage.getItem("accessToken") ?? "";
+  const [peopleList, setPeopleList] = useState<ChatItem[]>([]);
+  const [filteredChats, setFilteredChats] = useState<ChatItem[]>(peopleList);
   const [searchQuery, setSearchQuery] = useState("");
 
-  const [filteredChats, setFilteredChats] = useState<ChatItem[]>(initialChats);
+  let data: UserData;
+  try {
+    data = jwtDecode(token);
+  } catch (error) {
+    console.log(error);
+  }
+  const { socket } = useSocket();
+  const setSelectedChat = (chat: ChatItem) => {
+    const recipientId = chat.id.slice(chat.id.length - 12, chat.id.length);
+    const loggedInUserId = data.id.slice(chat.id.length - 12, chat.id.length);
+    if (!socket) return;
+    //  const room = [loggedInUserId, recipientId].join("_");
+
+    socket.emit("joinRoom", { loggedInUserId, recipientId });
+    return () => {
+      socket.off("connect");
+      socket.off("message");
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  };
+
   useEffect(() => {
     setFilteredChats(() => {
-      return initialChats.filter(
-        (chat) =>
-          chat.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          chat.lastMessage.toLowerCase().includes(searchQuery.toLowerCase())
+      return peopleList.filter(
+        (chat: ChatItem) =>
+          chat.firstName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          (chat.lastMessage != undefined
+            ? chat.lastMessage.toLowerCase().includes(searchQuery.toLowerCase())
+            : "")
       );
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchQuery]);
+
+  useEffect(() => {
+    fetchUsers();
+  }, []);
+  const fetchUsers = async () => {
+    const resp = await getData("users");
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const mappedList = resp.users.map((user: any) => {
+      return {
+        id: user.id,
+        firstName: user.firstname,
+        lastName: user.lastname,
+        lastMessage: undefined,
+        time: undefined,
+      };
+    });
+    setPeopleList(() => {
+      return mappedList;
+    });
+    setFilteredChats(() => {
+      return mappedList;
+    });
+  };
   return (
     <Card className="w-full col-span-1 ">
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
         <CardTitle className="text-2xl font-bold">Chats</CardTitle>
         <Button variant="ghost" size="icon" className="rounded-full">
-          <PenBox className="h-5 w-5" />
+          <Pencil1Icon className="h-5 w-5" />
           <span className="sr-only">New message</span>
         </Button>
       </CardHeader>
       <CardContent>
         <div className="relative">
-          <Search className="absolute left-2 top-3 h-4 w-4 text-muted-foreground" />
+          <MagnifyingGlassIcon className="absolute left-2 top-3 h-4 w-4 text-muted-foreground" />
           <Input
             className="pl-8"
             placeholder="Search chats..."
@@ -68,20 +109,12 @@ export default function ChatList() {
               <ToggleGroupItem
                 key={chat.id}
                 value={chat.id}
-                aria-label={`Toggle ${chat.name}`}
+                aria-label={`Toggle ${chat.firstName}`}
+                onClick={() => setSelectedChat(chat)}
                 className="flex items-start space-x-4 rounded-lg !mt-2 py-2 transition-colors hover:bg-muted/50 w-full h-14"
               >
-                <Avatar className="h-10 w-10">
-                  <AvatarImage src={chat.avatar} alt={chat.name} />
-                  <AvatarFallback>
-                    {chat.name
-                      .split(" ")
-                      .map((n) => n[0])
-                      .join("")}
-                  </AvatarFallback>
-                </Avatar>
                 <div className="flex-1 space-y-1  justify-items-start justify-start">
-                  <p className="font-medium leading-none">{chat.name}</p>
+                  <p className="font-medium leading-none">{`${chat.firstName} ${chat.lastName}`}</p>
                   <p className="text-sm text-muted-foreground">
                     {chat.lastMessage}
                   </p>

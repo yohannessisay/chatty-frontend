@@ -25,7 +25,7 @@ const makeRequest = async (method: string, url: string, data?: unknown) => {
     return await response.json();
   } catch (error) {
     console.error(`Error in ${method} request to ${url}:`, error);
-    throw error;
+    return  error;
   }
 };
  

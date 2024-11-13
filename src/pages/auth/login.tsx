@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { Eye, EyeOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -13,13 +12,19 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { encryptData } from "@/services/encrypt"; 
+import { encryptData } from "@/services/encrypt";
 import { postData } from "@/services/apiService";
+import { Link } from "react-router-dom";
+import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/services/contexts";
+import { EyeClosedIcon, EyeOpenIcon } from "@radix-ui/react-icons";
 
 export default function LoginScreen() {
+  const { login } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const { toast } = useToast();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -27,12 +32,24 @@ export default function LoginScreen() {
       [await encryptData("email")]: await encryptData(email),
       [await encryptData("password")]: await encryptData(password),
     };
-    const res = await postData("login",loginData)
-    console.log(res.json());
+    const res = await postData("login", loginData);
+
+    if (res && res.success) {
+      toast({
+        variant: "default",
+        title: res.message,
+      }); 
+      login(res.accessToken);
+    } else {
+      toast({
+        variant: "destructive",
+        title: "Invalid Credentials",
+      });
+    }
   };
 
   return (
-    <div className="mt-24 flex items-center justify-center bg-gray-100 dark:bg-gray-900">
+    <div className="mt-24 flex items-center justify-center ">
       <Card className="w-full max-w-md">
         <CardHeader>
           <CardTitle className="text-2xl font-bold text-center">
@@ -72,9 +89,9 @@ export default function LoginScreen() {
                   onClick={() => setShowPassword(!showPassword)}
                 >
                   {showPassword ? (
-                    <EyeOff className="h-4 w-4 text-gray-500" />
+                    <EyeClosedIcon className="h-4 w-4 text-gray-500" />
                   ) : (
-                    <Eye className="h-4 w-4 text-gray-500" />
+                    <EyeOpenIcon className="h-4 w-4 text-gray-500" />
                   )}
                 </button>
               </div>
@@ -86,7 +103,10 @@ export default function LoginScreen() {
         </CardContent>
         <CardFooter className="flex justify-between">
           <Button variant="link">Forgot password?</Button>
-          <Button variant="link">Sign up</Button>
+          <Link to={"/register"}>
+            {" "}
+            <Button variant="link">Sign up</Button>
+          </Link>
         </CardFooter>
       </Card>
     </div>

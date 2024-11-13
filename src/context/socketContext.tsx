@@ -1,51 +1,49 @@
-import React, { createContext, useContext, useEffect, useState } from "react";
+import { UserData } from "@/pages/chats";
+import { jwtDecode } from "jwt-decode";
+import React, { createContext, useEffect, useState } from "react";
 import { io, Socket } from "socket.io-client";
 
 const SERVER_URL =
-  import.meta.env.MODE === 'production'
+  import.meta.env.MODE === "production"
     ? import.meta.env.VITE_SOCKET_SERVER_PROD
     : import.meta.env.VITE_SOCKET_SERVER_LOCAL;
 
-// Define the context type
 interface SocketContextType {
   socket: Socket | null;
 }
 
-// Create the context with a default value
 const SocketContext = createContext<SocketContextType>({ socket: null });
-
-// Export a custom hook to use the socket context
-export const useSocket = () => useContext(SocketContext);
 
 export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
 }) => {
   const [socket, setSocket] = useState<Socket | null>(null);
+  const token = localStorage.getItem("accessToken") ?? "";
 
   useEffect(() => {
-    // Initialize and connect the socket
-    const socketInstance = io(SERVER_URL, {
-      autoConnect: false,
-      reconnectionAttempts: 3,
-      timeout: 10000,
-    });
+    if (token.length > 0) {
+      const data: UserData = jwtDecode(token);
+      const userId = data.id.slice(data.id.length - 12, data.id.length);
+      const socketInstance = io(SERVER_URL, {
+        query: { userId },
+        autoConnect: false,
+        reconnectionAttempts: 3,
+        timeout: 10000,
+      });
+      socketInstance.connect();
+      setSocket(socketInstance);
 
-    socketInstance.connect();
-    setSocket(socketInstance);
+      socketInstance.on("connect", () => {
+        console.log("Connected to server");
+      });
 
-    // Log connection events
-    socketInstance.on("connect", () => {
-      console.log("Connected to server");
-    });
-
-    socketInstance.on("disconnect", () => {
-      console.log("Disconnected from server");
-    });
-
-    // Cleanup on unmount
-    return () => {
-      socketInstance.disconnect();
-    };
+      socketInstance.on("disconnect", () => {
+        console.log("Disconnected from server");
+      });
+      return () => {
+        socketInstance.disconnect();
+      };
+    }
   }, []);
 
   return (
@@ -54,3 +52,5 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({
     </SocketContext.Provider>
   );
 };
+
+export default SocketContext;

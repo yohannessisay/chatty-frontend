@@ -1,5 +1,3 @@
-import {  Home } from "lucide-react";
-
 import {
   Sidebar,
   SidebarContent,
@@ -10,15 +8,14 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
-import { Link } from "react-router-dom";
-import { ChatBubbleIcon } from "@radix-ui/react-icons";
+import { Link, useLocation } from "react-router-dom";
+import { ChatBubbleIcon, HomeIcon } from "@radix-ui/react-icons";
 
-// Menu items.
 const items = [
   {
     title: "Home",
     url: "/",
-    icon: Home,
+    icon: HomeIcon,
   },
   {
     title: "Chats",
@@ -28,19 +25,33 @@ const items = [
 ];
 
 export function AppSidebar() {
+  const location = useLocation();
   return (
-    <Sidebar collapsible="icon" variant="floating" className="bg-gray-100 dark:bg-gray-900">
+    <Sidebar
+      collapsible="icon"
+      variant="floating"
+      className="bg-gray-100 dark:bg-gray-900"
+    >
       <SidebarContent>
         <SidebarGroup>
-          <SidebarGroupLabel>Chatty</SidebarGroupLabel>
+          <SidebarGroupLabel className="text-black text-xl mb-12">
+            Chatty
+          </SidebarGroupLabel>
           <SidebarGroupContent>
-            <SidebarMenu>
+            <SidebarMenu className="">
               {items.map((item) => (
-                <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton asChild>
+                <SidebarMenuItem
+                  key={item.title}
+                  className={` ${
+                    location.pathname === item.url
+                      ? "bg-primary  text-white  rounded-md shadow-md"
+                      : ""
+                  }`}
+                >
+                  <SidebarMenuButton asChild className="hover:bg-primary hover:text-white duration-300 transition-all">
                     <Link to={item.url}>
                       <item.icon />
-                      <span>{item.title}</span>
+                      <span className="text-base">{item.title}</span>
                     </Link>
                   </SidebarMenuButton>
                 </SidebarMenuItem>

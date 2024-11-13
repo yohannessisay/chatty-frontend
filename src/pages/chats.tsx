@@ -1,4 +1,3 @@
-import { Send } from "lucide-react";
 import ChatList from "./chatList";
 import { Button } from "@/components/ui/button";
 import {
@@ -7,44 +6,74 @@ import {
   CardFooter,
   CardHeader,
 } from "@/components/ui/card";
-import { useSocket } from "@/context/socketContext";
 import { useEffect, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { useSocket } from "@/services/contexts";
+import { ChatBubbleIcon } from "@radix-ui/react-icons";
+import { jwtDecode } from "jwt-decode";
+import { saveMessage } from "@/services/saveToIndexDB";
 
+export interface UserData {
+  username: string;
+  id: string;
+}
+
+export interface IncomingMessage {
+  text: string;
+  senderId: string;
+  senderUserName: string;
+}
 export default function Chats() {
   const { socket } = useSocket();
+  const token = localStorage.getItem("accessToken") ?? "";
   const [newMessage, setNewMessage] = useState<string>("");
   const [messages, setMessages] = useState<
-    { text: string; senderId: string }[]
+    { text: string; senderId: string; senderUserName: string }[]
   >([]);
-  const [senderId, setSenderId] = useState<string | null>(null);
-  useEffect(() => {
-    if (!socket) return;
+try {
+  const data: UserData = jwtDecode(token);
+} catch (error) {
+  console.log(error);
+  
+}
+  
+  // const loadChat=() => {
+  //   if (!socket) return;
+  //   const room = [data.id, recipientId].sort().join("_");
+  //   socket.on("message", async (incomingMessage: IncomingMessage) => {
+  //     console.log(incomingMessage);
 
-    socket.on("connect", () => {
-      setSenderId(() => {
-        return socket.id ?? null;
-      });
-    });
-    // Listen for incoming messages
-    socket.on("message", (message: { text: string; senderId: string }) => {
-      setMessages((prev) => [...prev, message]);
-    });
+  //     const resp = await saveMessage(incomingMessage.senderUserName, {
+  //       sentTimeStamp: Date.now(),
+  //       readTimeStamp: undefined,
+  //       senderId: incomingMessage.senderId,
+  //       message: incomingMessage.text,
+  //       senderUserName: incomingMessage.senderUserName,
+  //     });
 
-    // Clean up the event listener when component unmounts or socket changes
-    return () => {
-      socket.off("connect");
-      socket.off("message");
-    };
-  }, [socket]);
+  //     if (resp) {
+  //       setMessages((prev) => [...prev, incomingMessage]);
+  //     }
+  //   });
 
-  const handleSendMessage = () => {
+  //   return () => {
+  //     socket.off("connect");
+  //     socket.off("message");
+  //   };
+  //   // eslint-disable-next-line react-hooks/exhaustive-deps
+  // };
+
+  const handleSendMessage = async () => {
+    // await saveMessage("john", { text: "Hello, John!", timestamp: Date.now() });
     if (socket && newMessage.trim()) {
-      // Send the message to the server without updating the state locally
-      socket.emit('message', { text: newMessage, senderId });
-      setNewMessage(''); // Clear the input after sending
+      socket.emit("message", {
+        text: newMessage,
+        senderUserName: data.username,
+        senderId: data.id,
+      });
+      setNewMessage("");
     }
   };
   return (
@@ -95,20 +124,18 @@ export default function Chats() {
             </Button>
           </div>
         </CardHeader>
-        <CardContent className="flex-grow overflow-hidden p-4">
-          <ScrollArea className="h-full pr-4">
+        <CardContent className="flex-grow p-4 ">
+          <ScrollArea className="h-[400px] overflow-hidden p-4 border rounded-md">
             {messages.map((message, index) => (
               <div
                 key={index}
                 className={`mb-4 flex ${
-                  message.senderId === senderId
-                    ? "justify-end"
-                    : "justify-start"
+                  message.senderId === data.id ? "justify-end" : "justify-start"
                 }`}
               >
                 <div
-                  className={`rounded-lg p-2 max-w-[70%] ${
-                    message.senderId === senderId
+                  className={`p-3 shadow-md max-w-[70%] rounded-3xl ${
+                    message.senderId === data.id
                       ? "bg-blue-500 text-white"
                       : "bg-gray-200 text-gray-800"
                   }`}
@@ -139,7 +166,7 @@ export default function Chats() {
               className="flex-grow"
             />
             <Button type="submit" size="icon" disabled={!newMessage.trim()}>
-              <Send className="h-4 w-4" />
+              <ChatBubbleIcon className="h-4 w-4" />
               <span className="sr-only">Send</span>
             </Button>
           </form>
