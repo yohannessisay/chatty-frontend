@@ -6,14 +6,13 @@ import {
   CardFooter,
   CardHeader,
 } from "@/components/ui/card";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useSocket } from "@/services/contexts";
 import { ChatBubbleIcon } from "@radix-ui/react-icons";
 import { jwtDecode } from "jwt-decode";
-// import { saveMessage } from "@/services/saveToIndexDB";
 
 export interface UserData {
   username: string;
@@ -21,8 +20,9 @@ export interface UserData {
 }
 
 export interface IncomingMessage {
-  text: string;
+  content: string;
   senderId: string;
+  roomId: string;
   senderUserName: string;
 }
 
@@ -31,29 +31,34 @@ export interface CurrentActiveChat {
   recipientName: string;
   recipientId: string;
 }
+
 export default function Chats() {
   const { socket } = useSocket();
   const token = localStorage.getItem("accessToken") ?? "";
   const [newMessage, setNewMessage] = useState<string>("");
+  const roomId = useRef("");
   const [messages, setMessages] = useState<
-    { text: string; senderId: string; senderUserName: string }[]
+    {
+      content: string;
+      senderId: string;
+      recipientId: string;
+      timestamp: string;
+    }[]
   >([]);
   const [currentChatDetail, setCurrentChatDetail] =
     useState<CurrentActiveChat>();
   const data: UserData = jwtDecode(token);
 
   const handleSendMessage = async () => {
-    // await saveMessage("john", { text: "Hello, John!", timestamp: Date.now() });
-
     if (socket && newMessage.trim()) {
       const chat = {
-        text: newMessage.trim(),
+        content: newMessage.trim(),
         senderId: data.id,
         senderUserName: data.username,
+        recipientId: currentChatDetail?.recipientId || "",
+        timestamp: new Date().toISOString(),
       };
-      setMessages((prev) => {
-        return { ...prev, chat };
-      });
+      setMessages((prev) => [...prev, chat]);
 
       socket.emit("message", {
         data: newMessage,
@@ -62,28 +67,45 @@ export default function Chats() {
       setNewMessage("");
     }
   };
+
   const updateMessageInput = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setNewMessage(() => {
-      return e.target.value;
-    });
+    setNewMessage(e.target.value);
   };
 
   useEffect(() => {
     if (socket) {
-      socket.on("receiveMessage", (incomingMessage: IncomingMessage) => {
-        console.log(incomingMessage);
-        
-        // setMessages((prevMessages) => [...prevMessages, incomingMessage]);
-
-
-      });
+      socket.on(
+        "roomJoined",
+        (incomingMessage: {
+          senderId: string;
+          recipientId: string;
+          roomId: string;
+        }) => {
+          roomId.current = incomingMessage.roomId;
+        }
+      );
 
       socket.on("missedMessages", (missedMessages) => {
-        // setMessages((prevMessages) => [...prevMessages, ...missedMessages]);
-        console.log(missedMessages);
-        
+        console.log("MISSED", missedMessages);
       });
 
+      socket.on("receiveMessage", (receivedMessage: IncomingMessage) => {
+        if (receivedMessage.senderId !== data.id) {
+          setMessages((prevMessages) => [
+            ...prevMessages,
+            {
+              content: receivedMessage.content,
+              senderId: receivedMessage.senderId,
+              recipientId: receivedMessage.roomId,
+              timestamp: new Date().toISOString(),
+            },
+          ]);
+        }
+      });
+
+      socket.on("alreadyInRoom", (message: string) => {
+        console.log("ALREADY IN ROOM", message);
+      });
 
       return () => {
         socket.off("receiveMessage");
@@ -91,16 +113,14 @@ export default function Chats() {
       };
     }
   }, [socket]);
+
   return (
     <div className="grid grid-cols-3 gap-4">
       <ChatList
         updateSelectedChat={(activeChat: CurrentActiveChat) => {
-          setCurrentChatDetail(() => {
-            return activeChat;
-          });
+          setCurrentChatDetail(activeChat);
         }}
-      ></ChatList>
-
+      />
       <Card className="h-[580px] flex flex-col w-full col-span-2">
         <CardHeader className="flex flex-row items-center gap-3 p-4">
           <Avatar className="h-10 w-10">
@@ -145,7 +165,7 @@ export default function Chats() {
             </Button>
           </div>
         </CardHeader>
-        <CardContent className="flex-grow p-4 ">
+        <CardContent className="flex-grow p-4">
           <ScrollArea className="h-[400px] overflow-hidden p-4 border rounded-md">
             {messages.length > 0
               ? messages.map((message, index) => (
@@ -164,11 +184,11 @@ export default function Chats() {
                           : "bg-gray-200 text-gray-800"
                       }`}
                     >
-                      {message.text}
+                      {message.content}
                     </div>
                   </div>
                 ))
-              : ""}
+              : "No messages yet"}
           </ScrollArea>
         </CardContent>
         <CardFooter className="p-4">

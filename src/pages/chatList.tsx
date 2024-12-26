@@ -35,10 +35,13 @@ export default function ChatList({ updateSelectedChat }: ChildProps) {
   }
   const { socket } = useSocket();
   const setSelectedChat = (chat: ChatItem) => {
-    const recipientId = chat.id.slice(chat.id.length - 12, chat.id.length);
+    const recipientId = chat.id;
     const loggedInUserId = data.id;
     if (!socket) return;
+    
     const room = [loggedInUserId, recipientId].join("_");
+    
+   
     updateSelectedChat({
       roomId: room,
       recipientName: `${chat.firstName} ${chat.lastName}`,
