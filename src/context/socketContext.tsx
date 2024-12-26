@@ -23,7 +23,7 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({
   useEffect(() => {
     if (token.length > 0) {
       const data: UserData = jwtDecode(token);
-      const userId = data.id.slice(data.id.length - 12, data.id.length);
+      const userId = data.id;
       const socketInstance = io(SERVER_URL, {
         query: { userId },
         autoConnect: false,

@@ -7,10 +7,10 @@ export const ProtectedRoute = () => {
   const { isAuthenticated } = useAuth();
 
   useEffect(() => {
-    if (!isAuthenticated) {
+    if (!isAuthenticated()) {
       navigate("/login");
     }
   }, [isAuthenticated, navigate]);
- 
-  return isAuthenticated ? <Outlet /> : null;
+
+  return isAuthenticated() ? <Outlet /> : null;
 };

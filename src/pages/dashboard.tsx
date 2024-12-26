@@ -5,11 +5,11 @@ export default function Dashboard() {
   return (
     <div>
       <h1 className="text-3xl text-center">
-        {isAuthenticated
+        {isAuthenticated()
           ? "Welcome to your dashboard!"
           : "Welcome, please sign in or register here to use Chatty"}
       </h1>
-      {!isAuthenticated && <LoginScreen />}
+      {!isAuthenticated() && <LoginScreen />}
     </div>
   );
 }

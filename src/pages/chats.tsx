@@ -13,7 +13,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useSocket } from "@/services/contexts";
 import { ChatBubbleIcon } from "@radix-ui/react-icons";
 import { jwtDecode } from "jwt-decode";
-import { saveMessage } from "@/services/saveToIndexDB";
+// import { saveMessage } from "@/services/saveToIndexDB";
 
 export interface UserData {
   username: string;
@@ -25,6 +25,12 @@ export interface IncomingMessage {
   senderId: string;
   senderUserName: string;
 }
+
+export interface CurrentActiveChat {
+  roomId: string;
+  recipientName: string;
+  recipientId: string;
+}
 export default function Chats() {
   const { socket } = useSocket();
   const token = localStorage.getItem("accessToken") ?? "";
@@ -32,55 +38,70 @@ export default function Chats() {
   const [messages, setMessages] = useState<
     { text: string; senderId: string; senderUserName: string }[]
   >([]);
-try {
+  const [currentChatDetail, setCurrentChatDetail] =
+    useState<CurrentActiveChat>();
   const data: UserData = jwtDecode(token);
-} catch (error) {
-  console.log(error);
-  
-}
-  
-  // const loadChat=() => {
-  //   if (!socket) return;
-  //   const room = [data.id, recipientId].sort().join("_");
-  //   socket.on("message", async (incomingMessage: IncomingMessage) => {
-  //     console.log(incomingMessage);
-
-  //     const resp = await saveMessage(incomingMessage.senderUserName, {
-  //       sentTimeStamp: Date.now(),
-  //       readTimeStamp: undefined,
-  //       senderId: incomingMessage.senderId,
-  //       message: incomingMessage.text,
-  //       senderUserName: incomingMessage.senderUserName,
-  //     });
-
-  //     if (resp) {
-  //       setMessages((prev) => [...prev, incomingMessage]);
-  //     }
-  //   });
-
-  //   return () => {
-  //     socket.off("connect");
-  //     socket.off("message");
-  //   };
-  //   // eslint-disable-next-line react-hooks/exhaustive-deps
-  // };
 
   const handleSendMessage = async () => {
     // await saveMessage("john", { text: "Hello, John!", timestamp: Date.now() });
+
     if (socket && newMessage.trim()) {
-      socket.emit("message", {
-        text: newMessage,
-        senderUserName: data.username,
+      const chat = {
+        text: newMessage.trim(),
         senderId: data.id,
+        senderUserName: data.username,
+      };
+      setMessages((prev) => {
+        return { ...prev, chat };
+      });
+
+      socket.emit("message", {
+        data: newMessage,
+        recipientId: currentChatDetail?.recipientId,
       });
       setNewMessage("");
     }
   };
+  const updateMessageInput = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setNewMessage(() => {
+      return e.target.value;
+    });
+  };
+
+  useEffect(() => {
+    if (socket) {
+      socket.on("receiveMessage", (incomingMessage: IncomingMessage) => {
+        console.log(incomingMessage);
+        
+        // setMessages((prevMessages) => [...prevMessages, incomingMessage]);
+
+
+      });
+
+      socket.on("missedMessages", (missedMessages) => {
+        // setMessages((prevMessages) => [...prevMessages, ...missedMessages]);
+        console.log(missedMessages);
+        
+      });
+
+
+      return () => {
+        socket.off("receiveMessage");
+        socket.off("missedMessages");
+      };
+    }
+  }, [socket]);
   return (
     <div className="grid grid-cols-3 gap-4">
-      <ChatList></ChatList>
+      <ChatList
+        updateSelectedChat={(activeChat: CurrentActiveChat) => {
+          setCurrentChatDetail(() => {
+            return activeChat;
+          });
+        }}
+      ></ChatList>
 
-      <Card className=" flex flex-col w-full col-span-2">
+      <Card className="h-[580px] flex flex-col w-full col-span-2">
         <CardHeader className="flex flex-row items-center gap-3 p-4">
           <Avatar className="h-10 w-10">
             <AvatarImage src="/placeholder-avatar.jpg" alt="User's avatar" />
@@ -126,24 +147,28 @@ try {
         </CardHeader>
         <CardContent className="flex-grow p-4 ">
           <ScrollArea className="h-[400px] overflow-hidden p-4 border rounded-md">
-            {messages.map((message, index) => (
-              <div
-                key={index}
-                className={`mb-4 flex ${
-                  message.senderId === data.id ? "justify-end" : "justify-start"
-                }`}
-              >
-                <div
-                  className={`p-3 shadow-md max-w-[70%] rounded-3xl ${
-                    message.senderId === data.id
-                      ? "bg-blue-500 text-white"
-                      : "bg-gray-200 text-gray-800"
-                  }`}
-                >
-                  {message.text}
-                </div>
-              </div>
-            ))}
+            {messages.length > 0
+              ? messages.map((message, index) => (
+                  <div
+                    key={index}
+                    className={`mb-4 flex ${
+                      message.senderId === data.id
+                        ? "justify-end"
+                        : "justify-start"
+                    }`}
+                  >
+                    <div
+                      className={`p-3 shadow-md max-w-[70%] rounded-3xl ${
+                        message.senderId === data.id
+                          ? "bg-blue-500 text-white"
+                          : "bg-gray-200 text-gray-800"
+                      }`}
+                    >
+                      {message.text}
+                    </div>
+                  </div>
+                ))
+              : ""}
           </ScrollArea>
         </CardContent>
         <CardFooter className="p-4">
@@ -158,11 +183,7 @@ try {
               id="message"
               placeholder="Type a message..."
               value={newMessage}
-              onChange={(e) =>
-                setNewMessage(() => {
-                  return e.target.value;
-                })
-              }
+              onChange={updateMessageInput}
               className="flex-grow"
             />
             <Button type="submit" size="icon" disabled={!newMessage.trim()}>
