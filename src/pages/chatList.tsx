@@ -46,6 +46,7 @@ export default function ChatList({ updateSelectedChat }: ChildProps) {
       roomId: room,
       recipientName: `${chat.firstName} ${chat.lastName}`,
       recipientId: recipientId,
+      lastSeen:chat.lastSeen
     });
     socket.emit("joinRoom", { loggedInUserId, recipientId });
     return () => {
