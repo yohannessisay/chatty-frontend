@@ -1,5 +1,7 @@
-import PouchDB from 'pouchdb-browser';
-import PouchDBFind from 'pouchdb-find';
+/* eslint-disable @typescript-eslint/no-explicit-any */
+import PouchDB from "pouchdb-browser";
+import PouchDBFind from "pouchdb-find";
+import { getData, postData } from "./apiService";
 
 PouchDB.plugin(PouchDBFind);
 
@@ -22,13 +24,25 @@ const getDatabase = (chatPartner: string): PouchDB.Database => {
   return dbCache[chatPartner];
 };
 
-export const saveMessage = async (chatPartner: string, messageData: Message): Promise<boolean> => {
+export const handleInitialChatLists = async (chatPartners: any) => {
+  if (chatPartners.length > 0) {
+    const promises = chatPartners.map((chatPartner: any) =>
+      getDatabase(chatPartner.id)
+    );
+    await Promise.all(promises);
+  }
+};
+
+export const saveMessage = async (
+  chatPartner: string,
+  messageData: Message
+): Promise<boolean> => {
   const db = getDatabase(chatPartner);
   try {
     const response = await db.post(messageData);
     return response.ok;
   } catch (error) {
-    console.error('Failed to save message:', error);
+    console.error("Failed to save message:", error);
     return false;
   }
 };
@@ -49,14 +63,92 @@ export const getMessages = async (chatPartner: string): Promise<Message[]> => {
       })
       .map((row) => row.doc as unknown as Message);
   } catch (error) {
-    console.error('Failed to fetch messages:', error);
+    console.error("Failed to fetch messages:", error);
     return [];
   }
 };
-
+export const getPublicKey = async (
+  chatPartner: string
+): Promise<any | null> => {
+  const db = getDatabase(chatPartner);
+  try {
+    const result = (await db.find({ selector: { type: "keyPair" } })) as any;
+    if (result.docs.length > 0) {
+      return {
+        privateKey: result.docs[0].privateKey,
+        publicKey: result.docs[0].publicKey,
+      };
+    }
+  } catch (error) {
+    console.error("Failed to fetch public key:", error);
+  }
+  return null;
+};
+export const fetchPublicKeyFromBackend = async (chatPartnerId: string) => {
+  try {
+    const response = await getData(`user/getPublicKeys/${chatPartnerId}`);
+    if (response.ok) {
+      const { publicKey } = await response.json();
+      return publicKey;
+    }
+  } catch (error) {
+    console.error("Failed to fetch public key from backend:", error);
+  }
+  return null;
+};
+export const addPublicKeyToBackend = async (
+  senderId: string,
+  chatPartnerId: string,
+  publicKey: string
+) => {
+  try {
+    const response = await postData(`user/connect`, {
+      senderId: senderId,
+      recipientId: chatPartnerId,
+      publicKey: publicKey,
+    });
+    if (response.ok) {
+      const { publicKey } = await response.json();
+      return publicKey;
+    }
+  } catch (error) {
+    console.error("Failed to fetch public key from backend:", error);
+  }
+  return null;
+};
 export const closeDatabase = (chatPartner: string): void => {
   if (dbCache[chatPartner]) {
     dbCache[chatPartner].close();
     delete dbCache[chatPartner];
+  }
+};
+export const savePublicKey = async (
+  chatPartner: string,
+  publicKey: string,
+  senderId:string,
+  privateKey: string = "",
+) => {
+  const db = getDatabase(chatPartner);
+  try {
+    const documentId = "keyPair";
+
+    const result = await db.find({ selector: { type: "keyPair" } });
+
+    if (result?.docs?.length > 0) {
+      const deletePromises = result.docs.map((doc) =>
+        db.remove(doc._id, doc._rev)
+      );
+      await Promise.all(deletePromises);
+    }
+
+    await db.put({
+      _id: documentId,
+      publicKey,
+      privateKey,
+      type: "keyPair",
+    });
+    addPublicKeyToBackend(senderId,chatPartner,publicKey);
+  } catch (error) {
+    console.error("Failed to save key pair:", error);
   }
 };

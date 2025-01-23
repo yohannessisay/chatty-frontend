@@ -18,8 +18,8 @@ import {
   getMessages,
   closeDatabase,
   Message,
+  savePublicKey,
 } from "../services/pouchDBService";
-import { encryptData } from "@/services/encrypt";
 
 import { ChatAuth } from "./chatAuth";
 
@@ -51,13 +51,12 @@ export default function Chats() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [currentChatDetail, setCurrentChatDetail] =
     useState<CurrentActiveChat>();
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [isChatAuthDialogOpen, setIsChatAuthDialogOpen] = useState(false);
   const data: UserData = jwtDecode(token);
 
   const handleSendMessage = useCallback(async () => {
     if (socket && newMessage.trim()) {
-      const newMessageContent = await encryptData(newMessage.trim());
-
       const chat: Message = {
         content: newMessage.trim(),
         senderId: data.id,
@@ -70,10 +69,9 @@ export default function Chats() {
       setMessages((prev) => [...prev, chat]);
 
       setNewMessage("");
-      const updatedChat = { ...chat, content: newMessageContent };
       const success = await saveMessage(
         currentChatDetail?.recipientId || "",
-        updatedChat
+        chat
       );
       if (success) {
         socket.emit("message", {
@@ -95,15 +93,18 @@ export default function Chats() {
 
   const handleCurrentChatChange = useCallback(
     async (activeChat: CurrentActiveChat) => {
-      setCurrentChatDetail(activeChat);
+      setCurrentChatDetail(() => {
+        return activeChat;
+      });
       setMessages([]);
       roomId.current = activeChat.roomId;
       const messages = await getMessages(activeChat.recipientId);
-      if (messages.length === 0) {
-        setIsChatAuthDialogOpen(() => {
-          return true;
-        });
-      }
+      // if (messages.length === 0) {
+      //   setIsChatAuthDialogOpen(() => {
+      //     return true;
+      //   });
+      // }
+
       setMessages(messages);
     },
     []
@@ -135,9 +136,6 @@ export default function Chats() {
 
       socket.on("receiveMessage", async (receivedMessage: IncomingMessage) => {
         if (receivedMessage.senderId !== data.id) {
-          const incomingMessageContent = await encryptData(
-            receivedMessage.content
-          );
           const chat: Message = {
             content: receivedMessage.content,
             senderId: receivedMessage.senderId,
@@ -146,9 +144,11 @@ export default function Chats() {
             sentTimeStamp: new Date().toISOString(),
             roomId: roomId.current,
           };
-          setMessages((prevMessages) => [...prevMessages, chat]);
-          const updatedChat = { ...chat, content: incomingMessageContent };
-          const success = await saveMessage(chat?.senderId || "", updatedChat);
+          if (currentChatDetail?.recipientId === receivedMessage.senderId) {
+            setMessages((prevMessages) => [...prevMessages, chat]);
+          }
+
+          const success = await saveMessage(chat?.senderId || "", chat);
           if (success) {
             console.log("Incoming message saved successfully");
           } else {
@@ -160,7 +160,11 @@ export default function Chats() {
       socket.on("alreadyInRoom", (message: string) => {
         console.log("ALREADY IN ROOM", message);
       });
-
+      socket.on("send-public-key", async ({ publicKey, senderId }) => {
+        console.log(publicKey,senderId);
+        
+        // await savePublicKey(senderId, publicKey);
+      });
       return () => {
         socket.off("receiveMessage");
         socket.off("missedMessages");
@@ -178,6 +182,7 @@ export default function Chats() {
 
   return (
     <div className="grid grid-cols-3 gap-4">
+      <ChatAuth isDialogOpen={isChatAuthDialogOpen}></ChatAuth>
       <ChatList updateSelectedChat={handleCurrentChatChange} />
       {currentChatDetail?.recipientId && (
         <>
@@ -242,7 +247,6 @@ export default function Chats() {
             </CardHeader>
             <CardContent className="flex-grow p-4">
               <ScrollArea className="h-[400px] overflow-hidden p-4 border rounded-md">
-       
                 {messages.length > 0
                   ? messages.map((message, index) => (
                       <div
@@ -291,7 +295,6 @@ export default function Chats() {
           </Card>
         </>
       )}
-      <ChatAuth isDialogOpen={isChatAuthDialogOpen}></ChatAuth>
     </div>
   );
 }

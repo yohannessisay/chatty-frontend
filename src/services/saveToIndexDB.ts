@@ -38,6 +38,7 @@ class PouchDBService {
       return [];
     }
   }
+  
 }
 
 export default PouchDBService;

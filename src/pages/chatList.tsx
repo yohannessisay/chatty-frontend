@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,6 +10,13 @@ import { jwtDecode } from "jwt-decode";
 import { CurrentActiveChat, UserData } from "./chats";
 import { useSocket } from "@/services/contexts";
 import { timeAgo } from "@/services/utils";
+import {
+  fetchPublicKeyFromBackend,
+  getPublicKey,
+  handleInitialChatLists,
+  savePublicKey,
+} from "@/services/pouchDBService";
+import { generateKeyPair } from "@/services/encrypt";
 
 interface ChatItem {
   id: string;
@@ -26,7 +33,8 @@ export default function ChatList({ updateSelectedChat }: ChildProps) {
   const [peopleList, setPeopleList] = useState<ChatItem[]>([]);
   const [filteredChats, setFilteredChats] = useState<ChatItem[]>(peopleList);
   const [searchQuery, setSearchQuery] = useState("");
-
+  const [loading, setIsLoading] = useState(false);
+  const publicKey = useRef("");
   let data: UserData;
   try {
     data = jwtDecode(token);
@@ -34,21 +42,45 @@ export default function ChatList({ updateSelectedChat }: ChildProps) {
     console.log(error);
   }
   const { socket } = useSocket();
-  const setSelectedChat = (chat: ChatItem) => {
+  const setSelectedChat = async (chat: ChatItem) => {
     const recipientId = chat.id;
     const loggedInUserId = data.id;
     if (!socket) return;
-    
+
     const room = [loggedInUserId, recipientId].join("_");
-    
-   
+
     updateSelectedChat({
       roomId: room,
       recipientName: `${chat.firstName} ${chat.lastName}`,
       recipientId: recipientId,
-      lastSeen:chat.lastSeen
+      lastSeen: chat.lastSeen,
     });
     socket.emit("joinRoom", { loggedInUserId, recipientId });
+
+    let res = await getPublicKey(recipientId);
+
+    if (!res) {
+      res = await fetchPublicKeyFromBackend(recipientId);
+
+      if (res && res.length > 0) {
+        await savePublicKey(recipientId, res.publicKey, loggedInUserId);
+      } else {
+        const publicKey = await generateKeyPair();
+        socket.emit("send-public-key", {
+          recipientId: recipientId,
+          publicKey,
+        });
+        await savePublicKey(
+          recipientId,
+          publicKey.publicKey,
+          loggedInUserId,
+          publicKey.privateKey
+        );
+      }
+    } else {
+      publicKey.current = res.publicKey;
+    }
+
     return () => {
       socket.off("connect");
       socket.off("message");
@@ -73,9 +105,12 @@ export default function ChatList({ updateSelectedChat }: ChildProps) {
     fetchUsers();
   }, []);
   const fetchUsers = async () => {
+    setIsLoading(() => {
+      return true;
+    });
     const resp = await getData("users");
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const mappedList = resp.users.map((user: any) => { 
+    const mappedList = resp.users.map((user: any) => {
       return {
         id: user.id,
         firstName: user.firstname,
@@ -84,11 +119,16 @@ export default function ChatList({ updateSelectedChat }: ChildProps) {
         lastSeen: timeAgo(user.lastSeen),
       };
     });
+    await handleInitialChatLists(mappedList);
+
     setPeopleList(() => {
       return mappedList;
     });
     setFilteredChats(() => {
       return mappedList;
+    });
+    setIsLoading(() => {
+      return false;
     });
   };
   return (
@@ -111,41 +151,51 @@ export default function ChatList({ updateSelectedChat }: ChildProps) {
           />
         </div>
         <div className="mt-4 space-y-2 ">
-          <ToggleGroup
-            type="single"
-            orientation="vertical"
-            className="flex flex-col space-y-6 items-start "
-          >
-            {filteredChats.map((chat) =>
-              chat.id !== data.id ? (
-                <ToggleGroupItem
-                  key={chat.id}
-                  value={chat.id}
-                  aria-label={`Toggle ${chat.firstName}`}
-                  onClick={() => setSelectedChat(chat)}
-                  className="flex items-start space-x-4 rounded-lg !mt-2 py-2 transition-colors hover:bg-muted/50 w-full h-14"
-                >
-                  <div className="flex-1 space-y-1  justify-items-start justify-start">
-                    <p className="font-medium leading-none">{`${chat.firstName} ${chat.lastName}`}</p>
-                    <p className="text-sm text-muted-foreground">
-                      {chat.lastMessage}
-                    </p>
-                  </div>
-                  <span
-                    className={`text-xs text-muted-foreground ${
-                      chat.lastSeen === "Active"
-                        ? "bg-green-600 rounded-full h-3 w-3"
-                        : ""
-                    }`}
+          {loading ? (
+            <div className="flex justify-center items-center">
+              {" "}
+              <div
+                className="w-12 h-12 rounded-full animate-spin
+                    border border-solid border-yellow-500 border-t-transparent"
+              ></div>
+            </div>
+          ) : (
+            <ToggleGroup
+              type="single"
+              orientation="vertical"
+              className="flex flex-col space-y-6 items-start "
+            >
+              {filteredChats.map((chat) =>
+                chat.id !== data.id ? (
+                  <ToggleGroupItem
+                    key={chat.id}
+                    value={chat.id}
+                    aria-label={`Toggle ${chat.firstName}`}
+                    onClick={() => setSelectedChat(chat)}
+                    className="flex items-start space-x-4 rounded-lg !mt-2 py-2 transition-colors hover:bg-muted/50 w-full h-14"
                   >
-                    {chat.lastSeen !== "Active" ? chat.lastSeen : ""}
-                  </span>
-                </ToggleGroupItem>
-              ) : (
-                ""
-              )
-            )}
-          </ToggleGroup>
+                    <div className="flex-1 space-y-1  justify-items-start justify-start">
+                      <p className="font-medium leading-none">{`${chat.firstName} ${chat.lastName}`}</p>
+                      <p className="text-sm text-muted-foreground">
+                        {chat.lastMessage}
+                      </p>
+                    </div>
+                    <span
+                      className={`text-xs text-muted-foreground ${
+                        chat.lastSeen === "Active"
+                          ? "bg-green-600 rounded-full h-3 w-3"
+                          : ""
+                      }`}
+                    >
+                      {chat.lastSeen !== "Active" ? chat.lastSeen : ""}
+                    </span>
+                  </ToggleGroupItem>
+                ) : (
+                  ""
+                )
+              )}
+            </ToggleGroup>
+          )}
         </div>
       </CardContent>
     </Card>
