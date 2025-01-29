@@ -56,3 +56,64 @@ export const generateKeyPair = async () => {
     privateKey: btoa(String.fromCharCode(...new Uint8Array(privateKey))),
   };
 };
+export const encryptMessage = async (data:string, base64PublicKey:string) => {
+
+  const binaryDerString = atob(base64PublicKey);
+  const binaryDer = new Uint8Array(binaryDerString.length);
+  for (let i = 0; i < binaryDerString.length; i++) {
+    binaryDer[i] = binaryDerString.charCodeAt(i);
+  }
+
+  const publicKey = await window.crypto.subtle.importKey(
+    "spki",
+    binaryDer.buffer,
+    {
+      name: "RSA-OAEP",
+      hash: "SHA-256",
+    },
+    false,
+    ["encrypt"]
+  );
+
+  const encrypted = await window.crypto.subtle.encrypt(
+    {
+      name: "RSA-OAEP",
+    },
+    publicKey,
+    new TextEncoder().encode(data)
+  );
+
+  return btoa(String.fromCharCode(...new Uint8Array(encrypted)));
+};
+export const decryptMessage = async (encryptedData: string, base64PrivateKey: string) => {
+
+  
+  const binaryDerString = atob(base64PrivateKey);
+  const binaryDer = new Uint8Array(binaryDerString.length);
+  for (let i = 0; i < binaryDerString.length; i++) {
+    binaryDer[i] = binaryDerString.charCodeAt(i);
+  }
+
+  const privateKey = await window.crypto.subtle.importKey(
+    "pkcs8",
+    binaryDer.buffer,
+    {
+      name: "RSA-OAEP",
+      hash: "SHA-256",
+    },
+    false,
+    ["decrypt"]
+  );
+
+  const encryptedArray = Uint8Array.from(atob(encryptedData), c => c.charCodeAt(0));
+
+  const decrypted = await window.crypto.subtle.decrypt(
+    {
+      name: "RSA-OAEP",
+    },
+    privateKey,
+    encryptedArray
+  );
+
+  return new TextDecoder().decode(decrypted);
+};

@@ -2,6 +2,7 @@
 import PouchDB from "pouchdb-browser";
 import PouchDBFind from "pouchdb-find";
 import { getData, postData } from "./apiService";
+import { decryptMessage, encryptMessage } from "./encrypt";
 
 PouchDB.plugin(PouchDBFind);
 
@@ -35,11 +36,20 @@ export const handleInitialChatLists = async (chatPartners: any) => {
 
 export const saveMessage = async (
   chatPartner: string,
-  messageData: Message
+  messageData: Message,
+  publicKey: string
 ): Promise<boolean> => {
   const db = getDatabase(chatPartner);
+
   try {
-    const response = await db.post(messageData);
+    const convertedMessage = await encryptMessage(
+      messageData.content,
+      publicKey
+    );
+    const response = await db.post({
+      ...messageData,
+      content: convertedMessage,
+    });
     return response.ok;
   } catch (error) {
     console.error("Failed to save message:", error);
@@ -57,7 +67,7 @@ export const getMessages = async (chatPartner: string): Promise<Message[]> => {
         const docA = a.doc as Message | undefined;
         const docB = b.doc as Message | undefined;
         if (docA && docB) {
-          return docA.sentTimeStamp.localeCompare(docB.sentTimeStamp);
+          return docA.sentTimeStamp?.localeCompare(docB.sentTimeStamp);
         }
         return 0;
       })
@@ -79,6 +89,7 @@ export const getPublicKey = async (
         publicKey: result.docs[0].publicKey,
       };
     }
+    return null;
   } catch (error) {
     console.error("Failed to fetch public key:", error);
   }
@@ -125,8 +136,8 @@ export const closeDatabase = (chatPartner: string): void => {
 export const savePublicKey = async (
   chatPartner: string,
   publicKey: string,
-  senderId:string,
-  privateKey: string = "",
+  senderId: string,
+  privateKey: string = ""
 ) => {
   const db = getDatabase(chatPartner);
   try {
@@ -147,8 +158,39 @@ export const savePublicKey = async (
       privateKey,
       type: "keyPair",
     });
-    addPublicKeyToBackend(senderId,chatPartner,publicKey);
+    addPublicKeyToBackend(senderId, chatPartner, publicKey);
   } catch (error) {
     console.error("Failed to save key pair:", error);
+  }
+};
+
+export const getDecryptedMessages = async (
+  chatPartner: string
+): Promise<Message[]> => {
+  try {
+    const keyPair = await getPublicKey(chatPartner);
+    if (!keyPair || !keyPair.privateKey) {
+      throw new Error("Private key not found");
+    }
+
+
+    const messages = await getMessages(chatPartner);
+   
+    
+    const decryptedMessages = [];
+
+    for (const message of messages) {
+      if (message.content) {
+        const decryptedContent = await decryptMessage(
+          message.content,
+          keyPair.privateKey
+        );
+        decryptedMessages.push({ ...message, content: decryptedContent });
+      }
+    }
+    return decryptedMessages as Message[];
+  } catch (error) {
+    console.error("Failed to decrypt messages:", error);
+    return [];
   }
 };

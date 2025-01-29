@@ -15,10 +15,9 @@ import { ChatBubbleIcon } from "@radix-ui/react-icons";
 import { jwtDecode } from "jwt-decode";
 import {
   saveMessage,
-  getMessages,
   closeDatabase,
   Message,
-  savePublicKey,
+  getDecryptedMessages,
 } from "../services/pouchDBService";
 
 import { ChatAuth } from "./chatAuth";
@@ -51,10 +50,13 @@ export default function Chats() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [currentChatDetail, setCurrentChatDetail] =
     useState<CurrentActiveChat>();
+  const currentPublicKey = useRef("");
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [isChatAuthDialogOpen, setIsChatAuthDialogOpen] = useState(false);
   const data: UserData = jwtDecode(token);
-
+  const handlePublicKeyChange = (newPublicKey: string) => {
+    currentPublicKey.current = newPublicKey;
+  };
   const handleSendMessage = useCallback(async () => {
     if (socket && newMessage.trim()) {
       const chat: Message = {
@@ -71,7 +73,8 @@ export default function Chats() {
       setNewMessage("");
       const success = await saveMessage(
         currentChatDetail?.recipientId || "",
-        chat
+        chat,
+        currentPublicKey.current
       );
       if (success) {
         socket.emit("message", {
@@ -97,8 +100,10 @@ export default function Chats() {
         return activeChat;
       });
       setMessages([]);
-      roomId.current = activeChat.roomId;
-      const messages = await getMessages(activeChat.recipientId);
+      roomId.current = activeChat.roomId; 
+      const messages=await getDecryptedMessages(activeChat.recipientId);
+ 
+      
       // if (messages.length === 0) {
       //   setIsChatAuthDialogOpen(() => {
       //     return true;
@@ -148,7 +153,7 @@ export default function Chats() {
             setMessages((prevMessages) => [...prevMessages, chat]);
           }
 
-          const success = await saveMessage(chat?.senderId || "", chat);
+          const success = await saveMessage(chat?.senderId || "", chat,currentPublicKey.current);
           if (success) {
             console.log("Incoming message saved successfully");
           } else {
@@ -161,8 +166,8 @@ export default function Chats() {
         console.log("ALREADY IN ROOM", message);
       });
       socket.on("send-public-key", async ({ publicKey, senderId }) => {
-        console.log(publicKey,senderId);
-        
+        console.log(publicKey, senderId);
+
         // await savePublicKey(senderId, publicKey);
       });
       return () => {
@@ -183,7 +188,10 @@ export default function Chats() {
   return (
     <div className="grid grid-cols-3 gap-4">
       <ChatAuth isDialogOpen={isChatAuthDialogOpen}></ChatAuth>
-      <ChatList updateSelectedChat={handleCurrentChatChange} />
+      <ChatList
+        updateSelectedChat={handleCurrentChatChange}
+        setCurrentPublicKey={handlePublicKeyChange}
+      />
       {currentChatDetail?.recipientId && (
         <>
           <Card className="h-[580px] flex flex-col w-full col-span-2">

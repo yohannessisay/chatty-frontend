@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -27,14 +27,15 @@ interface ChatItem {
 }
 interface ChildProps {
   updateSelectedChat: (activeChat: CurrentActiveChat) => void;
+  setCurrentPublicKey:(publicKey:string)=>void;
 }
-export default function ChatList({ updateSelectedChat }: ChildProps) {
+export default function ChatList({ updateSelectedChat,setCurrentPublicKey }: ChildProps) {
   const token = localStorage.getItem("accessToken") ?? "";
   const [peopleList, setPeopleList] = useState<ChatItem[]>([]);
   const [filteredChats, setFilteredChats] = useState<ChatItem[]>(peopleList);
   const [searchQuery, setSearchQuery] = useState("");
   const [loading, setIsLoading] = useState(false);
-  const publicKey = useRef("");
+
   let data: UserData;
   try {
     data = jwtDecode(token);
@@ -57,13 +58,14 @@ export default function ChatList({ updateSelectedChat }: ChildProps) {
     });
     socket.emit("joinRoom", { loggedInUserId, recipientId });
 
-    let res = await getPublicKey(recipientId);
+    const resLocal = await getPublicKey(recipientId);
 
-    if (!res) {
-      res = await fetchPublicKeyFromBackend(recipientId);
 
-      if (res && res.length > 0) {
-        await savePublicKey(recipientId, res.publicKey, loggedInUserId);
+    if (resLocal === null) {
+      const backRes = await fetchPublicKeyFromBackend(recipientId); 
+
+      if (backRes && backRes.success == true) {
+        await savePublicKey(recipientId, backRes.publicKey, loggedInUserId);
       } else {
         const publicKey = await generateKeyPair();
         socket.emit("send-public-key", {
@@ -78,7 +80,7 @@ export default function ChatList({ updateSelectedChat }: ChildProps) {
         );
       }
     } else {
-      publicKey.current = res.publicKey;
+      setCurrentPublicKey(resLocal.publicKey)
     }
 
     return () => {
