@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import PouchDB from "pouchdb-browser";
 import PouchDBFind from "pouchdb-find";
-import { getData, postData } from "./apiService";
+import { deleteData, getData, postData } from "./apiService";
 import { decryptMessage, encryptMessage } from "./encrypt";
 
 PouchDB.plugin(PouchDBFind);
@@ -34,11 +34,11 @@ export const handleInitialChatLists = async (chatPartners: any) => {
   }
 };
 
-export const saveMessage = async (
+export const saveMyMessage = async (
   chatPartner: string,
   messageData: Message,
   publicKey: string
-): Promise<boolean> => {
+): Promise<string | boolean> => {
   const db = getDatabase(chatPartner);
 
   try {
@@ -46,11 +46,52 @@ export const saveMessage = async (
       messageData.content,
       publicKey
     );
-    const response = await db.post({
+    await db.post({
       ...messageData,
       content: convertedMessage,
     });
-    return response.ok;
+    return convertedMessage;
+  } catch (error) {
+    console.error("Failed to save message:", error);
+    return false;
+  }
+};
+
+export const saveIncomingMessage = async (
+  chatPartner: string,
+  messageData: Message
+): Promise<boolean> => {
+  const db = getDatabase(chatPartner);
+
+  try {
+    await db.post({
+      ...messageData,
+    });
+    return true;
+  } catch (error) {
+    console.error("Failed to save message:", error);
+    return false;
+  }
+};
+
+export const saveMissedMessage = async (
+  chatPartner: string,
+  messageData: Message,
+  id: string
+): Promise<boolean> => {
+  const db = getDatabase(chatPartner);
+
+  try {
+    await db.post({
+      ...messageData,
+      content: messageData,
+    });
+    const response = await deleteData(`messages/updateMessageStatus/${id}`);
+    if (response.ok) {
+      return true;
+    }
+
+    return false;
   } catch (error) {
     console.error("Failed to save message:", error);
     return false;
@@ -173,10 +214,8 @@ export const getDecryptedMessages = async (
       throw new Error("Private key not found");
     }
 
-
     const messages = await getMessages(chatPartner);
-   
-    
+
     const decryptedMessages = [];
 
     for (const message of messages) {
@@ -189,8 +228,30 @@ export const getDecryptedMessages = async (
       }
     }
     return decryptedMessages as Message[];
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  } catch (error) {
+    // console.error("Failed to decrypt messages:", error);
+    return [];
+  }
+};
+
+export const getDecryptedMessage = async (
+  chatPartner: string,
+  message: string
+): Promise<string> => {
+
+  
+  try {
+    const keyPair = await getPublicKey(chatPartner);
+    if (!keyPair || !keyPair.privateKey) {
+      throw new Error("Private key not found");
+    }
+    console.log(chatPartner,keyPair);
+    const decryptedContent = await decryptMessage(message, keyPair.privateKey);
+    return decryptedContent;
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
   } catch (error) {
     console.error("Failed to decrypt messages:", error);
-    return [];
+    return "ERROR DECRYPTING MESSAGE";
   }
 };

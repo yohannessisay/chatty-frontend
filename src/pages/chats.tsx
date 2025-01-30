@@ -14,10 +14,13 @@ import { useSocket } from "@/services/contexts";
 import { ChatBubbleIcon } from "@radix-ui/react-icons";
 import { jwtDecode } from "jwt-decode";
 import {
-  saveMessage,
   closeDatabase,
   Message,
   getDecryptedMessages,
+  saveMissedMessage,
+  saveIncomingMessage,
+  getDecryptedMessage,
+  saveMyMessage,
 } from "../services/pouchDBService";
 
 import { ChatAuth } from "./chatAuth";
@@ -51,6 +54,7 @@ export default function Chats() {
   const [currentChatDetail, setCurrentChatDetail] =
     useState<CurrentActiveChat>();
   const currentPublicKey = useRef("");
+  const messageEndRef = useRef<HTMLDivElement | null>(null);
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [isChatAuthDialogOpen, setIsChatAuthDialogOpen] = useState(false);
   const data: UserData = jwtDecode(token);
@@ -71,17 +75,16 @@ export default function Chats() {
       setMessages((prev) => [...prev, chat]);
 
       setNewMessage("");
-      const success = await saveMessage(
+      const savedMessage = await saveMyMessage(
         currentChatDetail?.recipientId || "",
         chat,
         currentPublicKey.current
       );
-      if (success) {
+      if (savedMessage != false) {
         socket.emit("message", {
-          data: newMessage,
+          data: savedMessage,
           recipientId: currentChatDetail?.recipientId,
         });
-        console.log("Message saved successfully");
       } else {
         console.error("Failed to save message");
       }
@@ -100,10 +103,9 @@ export default function Chats() {
         return activeChat;
       });
       setMessages([]);
-      roomId.current = activeChat.roomId; 
-      const messages=await getDecryptedMessages(activeChat.recipientId);
- 
-      
+      roomId.current = activeChat.roomId;
+      const messages = await getDecryptedMessages(activeChat.recipientId);
+
       // if (messages.length === 0) {
       //   setIsChatAuthDialogOpen(() => {
       //     return true;
@@ -135,8 +137,31 @@ export default function Chats() {
         }
       );
 
-      socket.on("missedMessages", (missedMessages) => {
-        console.log("MISSED", missedMessages);
+      socket.on("missedMessages", async (message) => {
+        const missedMessage = message.messages;
+        if (missedMessage && missedMessage.success) {
+          const chat: Message = {
+            content: missedMessage.content,
+            senderId: missedMessage.senderId,
+            senderUserName: "",
+            recipientId: missedMessage.recipientId,
+            sentTimeStamp: missedMessage.timestamp,
+            roomId: missedMessage.roomId,
+          };
+
+          const success = await saveMissedMessage(
+            chat?.senderId || "",
+            chat,
+            missedMessage.id
+          );
+          if (!success) {
+            console.error("Failed to save incoming message");
+            return;
+          }
+          if (currentChatDetail?.recipientId === missedMessage.senderId) {
+            setMessages((prevMessages) => [...prevMessages, chat]);
+          }
+        }
       });
 
       socket.on("receiveMessage", async (receivedMessage: IncomingMessage) => {
@@ -149,15 +174,20 @@ export default function Chats() {
             sentTimeStamp: new Date().toISOString(),
             roomId: roomId.current,
           };
-          if (currentChatDetail?.recipientId === receivedMessage.senderId) {
-            setMessages((prevMessages) => [...prevMessages, chat]);
-          }
 
-          const success = await saveMessage(chat?.senderId || "", chat,currentPublicKey.current);
-          if (success) {
-            console.log("Incoming message saved successfully");
-          } else {
+          const success = await saveIncomingMessage(chat?.senderId || "", chat);
+          if (!success) {
             console.error("Failed to save incoming message");
+          }
+          if (currentChatDetail?.recipientId === receivedMessage.senderId) {
+            const decryptedContent = await getDecryptedMessage(
+              receivedMessage?.senderId,
+              receivedMessage.content
+            );
+            setMessages((prevMessages) => [
+              ...prevMessages,
+              { ...chat, content: decryptedContent },
+            ]);
           }
         }
       });
@@ -175,7 +205,7 @@ export default function Chats() {
         socket.off("missedMessages");
       };
     }
-  }, [socket, data.id]);
+  }, [socket, data, currentChatDetail]);
 
   useEffect(() => {
     return () => {
@@ -184,7 +214,9 @@ export default function Chats() {
       }
     };
   }, [currentChatDetail?.recipientId]);
-
+  useEffect(() => {
+    messageEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
   return (
     <div className="grid grid-cols-3 gap-4">
       <ChatAuth isDialogOpen={isChatAuthDialogOpen}></ChatAuth>
@@ -277,6 +309,7 @@ export default function Chats() {
                       </div>
                     ))
                   : "No messages yet"}
+                <div ref={messageEndRef} />
               </ScrollArea>
             </CardContent>
             <CardFooter className="p-4">

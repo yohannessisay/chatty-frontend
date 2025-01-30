@@ -43,6 +43,6 @@ export const putData = async (url: string, data: unknown) => {
   return await makeRequest("PUT", url, data);
 };
 
-export const deleteData = async (url: string, data: unknown) => {
-  return await makeRequest("DELETE", url, data);
+export const deleteData = async (url: string) => {
+  return await makeRequest("DELETE", url);
 };
